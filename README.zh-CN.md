@@ -83,7 +83,9 @@ npm run build
 
 构建结果位于 `dist/`，包括可安装的插件和 `SHA256SUMS`。发布的插件文件本身包含完整 MIT 授权声明。
 
-6 项行为测试覆盖中文与特殊字符、标签层级、保留回调期间的备注编辑、重复调用及失败恢复。上述命令检查模拟 API 行为与发布包完整性，不运行 OmniFocus 或 Bear；原生应用的创建与回写已在上述版本中手工联调。仓库目前未配置 GitHub Actions 工作流。
+6 项行为测试覆盖中文与特殊字符、标签层级、保留回调期间的备注编辑、重复调用及失败恢复。上述命令检查模拟 API 行为与发布包完整性，不运行 OmniFocus 或 Bear；原生应用的创建与回写已在上述版本中手工联调。
+
+[GitHub Actions 工作流](.github/workflows/test.yml)会在每次推送和提交 PR 时，使用 Node.js 22、24 分别运行上述命令并校验构建文件的校验和。也可以从仓库的 Actions 页面手动启动。工作流仅使用仓库只读权限，无需个人令牌，也不会访问你的 OmniFocus 或 Bear 数据。
 
 贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 

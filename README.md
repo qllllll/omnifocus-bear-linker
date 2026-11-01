@@ -83,7 +83,9 @@ npm run build
 
 The build places the installable plug-in and `SHA256SUMS` in `dist/`. The release file includes the complete MIT license notice.
 
-The six behavior tests cover Unicode, tag hierarchy, preserving concurrent note edits, duplicate calls and failure recovery. The commands above check mocked API behavior and package integrity without running OmniFocus or Bear. Native-app creation and link write-back were checked manually in the versions listed above. This repository does not currently configure a GitHub Actions workflow.
+The six behavior tests cover Unicode, tag hierarchy, preserving concurrent note edits, duplicate calls and failure recovery. The commands above check mocked API behavior and package integrity without running OmniFocus or Bear. Native-app creation and link write-back were checked manually in the versions listed above.
+
+The [GitHub Actions workflow](.github/workflows/test.yml) runs these commands and verifies the build checksum on Node.js 22 and 24 for every push and pull request. It can also be started manually from the repository's Actions tab. The workflow uses read-only repository permissions and does not require a personal token or access to your OmniFocus or Bear data.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance and [CHANGELOG.md](CHANGELOG.md) for release history.
 
