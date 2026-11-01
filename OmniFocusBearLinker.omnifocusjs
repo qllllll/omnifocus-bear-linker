@@ -1,0 +1,170 @@
+/*{
+  "type": "action",
+  "targets": ["omnifocus"],
+  "author": "qllllll",
+  "identifier": "cn.sferic.omnifocus.bear-note",
+  "version": "1.0.1",
+  "description": "为所选任务创建带标题、标签和任务链接的 Bear 笔记，并把笔记链接追加到任务备注。已有链接时打开原笔记。",
+  "label": "创建或打开 Bear 笔记",
+  "shortLabel": "Bear 笔记",
+  "paletteLabel": "创建或打开 Bear 笔记",
+  "image": "note.text.badge.plus"
+}*/
+/*
+SPDX-License-Identifier: MIT
+
+MIT License
+
+Copyright (c) 2026 QIN Zilong
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+(() => {
+  "use strict";
+
+  // 可改成其他统一标签；设为空字符串则只使用任务本身的标签。
+  const DEFAULT_TAG = "OmniFocus";
+  const pendingTasks = new Set();
+
+  function queryURL(action, parameters) {
+    return "bear://x-callback-url/" + action + "?" + Object.keys(parameters)
+      .map(key => encodeURIComponent(key) + "=" + encodeURIComponent(parameters[key]))
+      .join("&");
+  }
+
+  function existingNoteURL(note) {
+    const match = String(note || "").match(
+      /bear:\/\/x-callback-url\/open-note\?[^\s<>\])]*?\bid=([^&\s<>\])]+)/i
+    );
+    if (!match) return null;
+    try {
+      const identifier = decodeURIComponent(match[1]);
+      if (!identifier || /[\u0000-\u001f]/.test(identifier)) return null;
+      return queryURL("open-note", { id: identifier });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function tagComponent(name) {
+    // / 保留给父子标签层级；逗号是 Bear API 的标签分隔符。
+    return String(name || "").replace(/,/g, "，").replace(/#/g, "＃")
+      .replace(/\//g, "／").replace(/[\r\n]+/g, " ").trim();
+  }
+
+  function tagPath(tag) {
+    const components = [];
+    const seen = new Set();
+    while (tag && !seen.has(tag)) {
+      seen.add(tag);
+      const name = tagComponent(tag.name);
+      if (name) components.unshift(name);
+      tag = tag.parent;
+    }
+    return components.join("/");
+  }
+
+  function taskTags(task) {
+    const tags = DEFAULT_TAG ? [DEFAULT_TAG] : [];
+    Array.from(task.tags || []).forEach(tag => {
+      const path = tagPath(tag);
+      if (path && tags.indexOf(path) < 0) tags.push(path);
+    });
+    return tags;
+  }
+
+  function createURL(task, taskID) {
+    const taskURL = "omnifocus:///task/" + encodeURIComponent(taskID);
+    const lines = ["[在 OmniFocus 中打开任务](" + taskURL + ")"];
+    const project = task.containingProject;
+    if (project) lines.push("", "所属项目：" + String(project.name).replace(/[\r\n]+/g, " "));
+    if (task.note && task.note.trim()) lines.push("", "## 任务原备注", "", task.note);
+    lines.push("", "## 工作记录", "", "");
+    return queryURL("create", {
+      title: String(task.name || "未命名任务"),
+      text: lines.join("\n"),
+      tags: taskTags(task).join(","),
+      open_note: "no",
+      show_window: "no"
+    });
+  }
+
+  function createBearNote(url) {
+    return new Promise((resolve, reject) => {
+      const endpoint = URL.fromString(url);
+      if (!endpoint) {
+        reject(new Error("无法构建 Bear 创建笔记请求。"));
+        return;
+      }
+      endpoint.call((result, parameters) => {
+        // URL.call 对单参数回调会解包第一个参数；第二个参数始终是完整字典。
+        const response = parameters && typeof parameters === "object" ? parameters : result;
+        const id = response && response.identifier;
+        if (typeof id !== "string" || !id.trim()) {
+          reject(new Error("Bear 未返回笔记标识。请先在 Bear 中按任务标题查找，确认是否已创建笔记，再决定是否重试。"));
+          return;
+        }
+        resolve(queryURL("open-note", { id: id }));
+      }, error => {
+        reject(new Error(error && error.errorMessage ? String(error.errorMessage) : "Bear 未完成创建。请确认 Bear 可以正常打开。"));
+      });
+    });
+  }
+
+  const action = new PlugIn.Action(async function (selection) {
+    if (!selection.tasks || selection.tasks.length !== 1) return;
+    const task = selection.tasks[0];
+    const taskID = task.id.primaryKey;
+    if (pendingTasks.has(taskID)) return;
+
+    const existing = existingNoteURL(task.note);
+    if (existing) {
+      URL.fromString(existing).open();
+      return;
+    }
+
+    pendingTasks.add(taskID);
+    let createdURL = null;
+    try {
+      createdURL = await createBearNote(createURL(task, taskID));
+      // 回调时重新按 ID 找原任务，避免 Bear 切换应用或用户切换选择造成写错任务。
+      const current = Task.byIdentifier(taskID);
+      if (!current) throw new Error("原任务已不存在，无法写回链接。");
+      if (!String(current.note || "").includes(createdURL)) {
+        const separator = current.note ? "\n\n" : "";
+        // 只追加，不重新赋值 note，保留既有格式、附件和回调期间的编辑。
+        current.appendStringToNote(separator + "Bear 笔记：\n" + createdURL);
+      }
+      URL.fromString(createdURL).open();
+    } catch (error) {
+      const detail = error && error.message ? error.message : String(error);
+      const recovery = createdURL ? "\n\n笔记已创建，请保留以下链接并手工补入任务备注：\n" + createdURL : "";
+      await new Alert("Bear 笔记", detail + recovery).show();
+    } finally {
+      pendingTasks.delete(taskID);
+    }
+  });
+
+  action.validate = function (selection) {
+    return !!selection.tasks && selection.tasks.length === 1
+      && !pendingTasks.has(selection.tasks[0].id.primaryKey);
+  };
+  return action;
+})();

@@ -1,0 +1,24 @@
+{
+  "name": "omnifocus-bear-linker",
+  "version": "1.0.1",
+  "private": true,
+  "description": "Create Bear notes from OmniFocus tasks with tags and bidirectional links.",
+  "license": "MIT",
+  "author": "QIN Zilong (qllllll)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qllllll/omnifocus-bear-linker.git"
+  },
+  "homepage": "https://github.com/qllllll/omnifocus-bear-linker#readme",
+  "bugs": {
+    "url": "https://github.com/qllllll/omnifocus-bear-linker/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "check": "node scripts/verify-package.cjs",
+    "build": "node scripts/build.cjs"
+  }
+}
